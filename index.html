@@ -34,6 +34,7 @@
   .btn{margin-top:22px;padding:12px 36px;border-radius:999px;background:#6cf;color:#071022;font-weight:800;font-size:18px;transition:transform .15s}
   .btn:hover{transform:scale(1.05)}
   .btn.home{background:rgba(255,255,255,.12);color:#fff}
+  .btn.share{background:rgba(107,255,184,.16);color:#6bffb8;border:1px solid rgba(107,255,184,.45);min-width:150px}
   .dim{opacity:.55 !important;font-size:13px}
 
   /* ---------- 대기 화면 ---------- */
@@ -208,6 +209,7 @@ let planets, holes, shards, player, particles, popups, camY, shake, time;
 let score, height, combo, maxCombo, runShards;
 let meteors = [];
 let state = 'menu';
+let diedAt = 0;
 
 const stars = Array.from({ length: 160 }, () => ({
   x: Math.random(), y: Math.random(), z: Math.random() * 0.8 + 0.2, s: Math.random() * 1.6 + 0.3
@@ -370,6 +372,7 @@ function die() {
   buzz(200);
   player.mode = 'gone';
   state = 'dead';
+  diedAt = performance.now();
   if (score > best) {
     best = score;
     store.set('swingStarBest', best);
@@ -377,6 +380,11 @@ function die() {
   }
   setTimeout(() => { if (state === 'dead') showOverlay('over'); }, 900);
 }
+
+// 죽은 직후 입력으로 바로 다음 판을 시작 ('한 판만 더' 흐름이 끊기지 않게).
+// 사망 순간 눌려 있던 입력이 그대로 재시작으로 이어지지 않도록 짧은 유예를 둔다.
+const RESTART_DELAY = 260;
+const canQuickRestart = () => state === 'dead' && performance.now() - diedAt > RESTART_DELAY;
 
 function burst(x, y, color, n, power) {
   for (let i = 0; i < n; i++) {
@@ -624,6 +632,16 @@ function draw() {
   }
   ctx.globalAlpha = 1;
   ctx.restore();
+
+  // 사망 직후 오버레이가 뜨기 전 구간: 바로 재시작할 수 있다는 힌트
+  if (canQuickRestart() && $overlay.hidden) {
+    ctx.globalAlpha = Math.min(1, (performance.now() - diedAt - RESTART_DELAY) / 200) * 0.75;
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 15px system-ui, "Malgun Gothic", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('아무 키나 눌러 바로 다시 시작', W / 2, H * 0.62);
+    ctx.globalAlpha = 1;
+  }
 }
 
 // ---------- 화면 ----------
@@ -690,9 +708,42 @@ function showOverlay(kind) {
       <p class="big">점수 ${score}</p>
       <p>최고 기록 ${best}${score === best && score > 0 ? ' 🎉 신기록!' : ''}</p>
       <p>🪐 높이 ${height} · 🔥 최대 콤보 ${maxCombo} · ✦ +${runShards} (보유 ${shardsTotal})</p>
-      <div class="btns"><div class="btn">다시 하기</div><div class="btn home">🏠 메뉴 · 스킨</div></div>`;
+      <div class="btns"><div class="btn">다시 하기</div><div class="btn share">📋 결과 복사</div><div class="btn home">🏠 메뉴 · 스킨</div></div>
+      <p class="dim">Space · 클릭으로 바로 다시 시작</p>`;
   }
   $overlay.hidden = false;
+}
+
+// 어디에 올려두든 그 주소를 쓰고, file:// 로 연 경우에만 배포 주소로 대체
+const PAGE_URL = 'https://gyusun301-sys.github.io/swing-star/';
+const shareUrl = () => location.protocol.startsWith('http') ? location.origin + location.pathname : PAGE_URL;
+
+function shareText() {
+  return `🚀 스윙스타\n점수 ${score} · 🪐 높이 ${height} · 🔥 최대콤보 ${maxCombo}\n${shareUrl()}`;
+}
+
+// clipboard API 는 보안 컨텍스트(https/localhost)에서만 동작하므로 구식 방법으로 폴백
+async function copyText(text) {
+  try {
+    if (navigator.clipboard && isSecureContext) { await navigator.clipboard.writeText(text); return true; }
+  } catch (e) {}
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;top:-1000px;opacity:0';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove();
+    return ok;
+  } catch (e) { return false; }
+}
+
+function shareResult(el) {
+  copyText(shareText()).then(ok => {
+    el.textContent = ok ? '✅ 복사됨!' : '⚠️ 복사 실패';
+    setTimeout(() => { if (el.isConnected) el.textContent = '📋 결과 복사'; }, 1600);
+  });
 }
 
 function start() {
@@ -714,10 +765,16 @@ $overlay.addEventListener('click', e => {
   const chip = e.target.closest('.skin');
   if (chip) { pickSkin(chip.dataset.id, chip); return; }
   if (e.target.closest('.shop-wrap')) return;
+  const shareBtn = e.target.closest('.share');
+  if (shareBtn) { shareResult(shareBtn); return; }
   if (e.target.closest('.home')) { goMenu(); return; }
   if (state !== 'play') start();
 });
-cv.addEventListener('pointerdown', e => { e.preventDefault(); if (state === 'play') launch(); });
+cv.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  if (state === 'play') launch();
+  else if (canQuickRestart()) start();
+});
 $mute.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); initAudio(); setMuted(!muted); });
 addEventListener('keydown', e => {
   if (e.code === 'KeyM') { initAudio(); setMuted(!muted); return; }
@@ -725,7 +782,7 @@ addEventListener('keydown', e => {
   e.preventDefault();
   if (e.repeat) return;
   if (state === 'play') launch();
-  else if (!$overlay.hidden) start();
+  else if (canQuickRestart() || !$overlay.hidden) start();
 });
 
 reset();
