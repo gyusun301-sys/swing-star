@@ -81,30 +81,28 @@
 우선순위 순. ⚠️는 실제로 재현을 확인한 것, ○는 아직 없는 기능.
 
 ### ⚠️ 버그 · 엣지 케이스
-1. **음소거가 진동까지 끔.** `buzz()`가 `!muted`를 조건으로 두고 있어
-   (`index.html:192`) 소리만 끄고 햅틱은 남기는 선택이 불가능합니다. 설정 분리 필요.
-2. **조각을 주울 때마다 `localStorage`에 쓰기.** (`collectShard`, `index.html:352`)
+1. **조각을 주울 때마다 `localStorage`에 쓰기.** (`collectShard`, `index.html:352`)
    런 종료 시 일괄 저장으로 바꾸는 게 안전합니다.
-3. **메뉴 데모가 블랙홀 등장 지점에서 거의 항상 죽음.**
+2. **메뉴 데모가 블랙홀 등장 지점에서 거의 항상 죽음.**
    25회 시뮬레이션 중 사망 높이 중앙값 14, 11에서 죽은 횟수가 7회였습니다(블랙홀은 idx 12부터).
    `demoPilot()`이 직선 조준만 하고 블랙홀 중력을 계산하지 않기 때문입니다.
    대기 화면 시연이 매번 비슷한 지점에서 끊기므로 데모 품질 개선 여지가 있습니다.
    - 참고: 블랙홀 주위를 무한히 도는 소프트락은 **발생하지 않음**(최장 비행 0.72초, 25회 검증 완료).
 
 ### ⚠️ 접근성
-4. **오버레이 버튼이 전부 `<div>`** (`.btn`, `.skin`) — `tabindex`·`role`·포커스 스타일이 없어
+3. **오버레이 버튼이 전부 `<div>`** (`.btn`, `.skin`) — `tabindex`·`role`·포커스 스타일이 없어
    키보드만 쓰는 사용자는 스킨 선택과 "메뉴로 돌아가기"를 조작할 수 없습니다.
    (Space/Enter로 게임 시작만 가능)
-5. 색상만으로 행성 타입을 구분 — 색각 이상 대응 없음.
+4. 색상만으로 행성 타입을 구분 — 색각 이상 대응 없음.
 
 ### ○ 미구현 기능
-6. 일시정지 없음 (탭 전환 시 `dt` 클램프로 버티는 수준)
-7. BGM 없음 (효과음만)
-8. `maxCombo`·플레이 기록이 저장되지 않음 — 최고 점수 하나만 남음
-9. 점수 → 조각 환산 없음. 조각은 오직 필드 획득으로만 모임 (스킨 200개는 꽤 긴 그라인드)
-10. 행성 타입 3종에서 멈춤, 비행 속도 `FLY_SPEED`는 고정(공전 속도만 상승) — 후반 난이도 곡선이 평탄
-11. 파비콘 · PWA 매니페스트 · 오프라인 캐시 없음 (예전에 `thumbnail.png`를 만든 흔적이 `.claude/settings.local.json`에 남아 있으나 파일은 없음)
-12. 미션 / 일일 챌린지 / 리더보드 없음
+5. 일시정지 없음 (탭 전환 시 `dt` 클램프로 버티는 수준)
+6. BGM 없음 (효과음만)
+7. `maxCombo`·플레이 기록이 저장되지 않음 — 최고 점수 하나만 남음
+8. 점수 → 조각 환산 없음. 조각은 오직 필드 획득으로만 모임 (스킨 200개는 꽤 긴 그라인드)
+9. 행성 타입 3종에서 멈춤, 비행 속도 `FLY_SPEED`는 고정(공전 속도만 상승) — 후반 난이도 곡선이 평탄
+10. 파비콘 · PWA 매니페스트 · 오프라인 캐시 없음 (예전에 `thumbnail.png`를 만든 흔적이 `.claude/settings.local.json`에 남아 있으나 파일은 없음)
+11. 미션 / 일일 챌린지 / 리더보드 없음
 
 ## 코드 구조 (`index.html` 내부)
 
@@ -153,7 +151,14 @@
 ### Feedback
 - `sfx(name)` synthesizes sounds with Web Audio. There are no audio files.
 - `buzz()` uses `navigator.vibrate`.
-- Both are no-ops unless `state === 'play'` and not muted.
+- 소리(`muted`/`swingStarMuted`)와 진동(`vibeOn`/`swingStarVibe`)은 **완전히 독립**이다.
+  조용한 곳에서 소리만 끄고 햅틱은 남기는 경우가 실제로 흔하다.
+- 진동 가능 여부는 `hasVibrate()`로 **호출 시점에** 판정한다. 로드 시점 1회 판정으로 캐시하면
+  터치 정보가 아직 없는 환경에서 한 번 잘못 잡힌 값이 굳어 진짜 휴대폰에서도 진동이 죽는다.
+- 진동 토글 버튼(`#vibe`)은 `touchLike()`가 참일 때만 노출한다. 데스크톱 크롬에도
+  `navigator.vibrate`는 존재하지만 아무 일도 하지 않기 때문이다.
+  판정은 `(hover: none)` 변화와 첫 터치 입력에서 다시 수행한다(`syncVibeButton()`).
+- 둘 다 `state === 'play'` 일 때만 동작한다 (대기 화면 데모는 조용하다).
 - `AudioContext` is created in `initAudio()` on a user gesture.
 
 ### Skins
@@ -167,6 +172,7 @@ Everything is saved through `store.get/set` (JSON in `localStorage`, wrapped in 
 - `swingStarSkins`
 - `swingStarSkin`
 - `swingStarMuted`
+- `swingStarVibe`
 
 ## 자동 검사 (훅)
 
@@ -180,6 +186,9 @@ Everything is saved through `store.get/set` (JSON in `localStorage`, wrapped in 
 
 `git commit`이 아닌 Bash 호출과 `index.html`이 아닌 파일 편집은 조용히 통과합니다.
 오류 행 번호는 `index.html` 기준으로 보정되어 출력됩니다.
+
+**한계:** `node --check`는 **문법만** 검사합니다. 선언되지 않은 변수 참조,
+오타 난 함수명 같은 런타임 오류는 잡지 못합니다. 그런 것은 브라우저 콘솔 검증으로만 걸립니다.
 훅 설정을 바꾸면 세션을 새로 시작해야 반영됩니다.
 
 수동 실행:

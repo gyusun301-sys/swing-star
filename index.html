@@ -17,8 +17,11 @@
   #combo[hidden]{display:none}
   #combo.pop{animation:pop .35s ease-out}
   @keyframes pop{from{transform:scale(1.7)}to{transform:scale(1)}}
-  #mute{position:fixed;top:12px;right:12px;z-index:10;width:42px;height:42px;border-radius:50%;cursor:pointer;
+  #mute,#vibe{position:fixed;top:12px;z-index:10;width:42px;height:42px;border-radius:50%;cursor:pointer;
     border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.08);color:#fff;font-size:19px;padding:0}
+  #mute{right:12px}
+  #vibe{right:62px}
+  #vibe[hidden]{display:none}
 
   #overlay{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
     text-align:center;cursor:pointer;padding:20px;box-sizing:border-box;overflow:hidden}
@@ -103,12 +106,13 @@
   <div><span id="combo" hidden></span></div>
 </div>
 <div id="overlay"></div>
+<button id="vibe" title="진동 켜기/끄기 (V)" hidden>📳</button>
 <button id="mute" title="소리 켜기/끄기 (M)">🔊</button>
 
 <script>
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
-const $hud = $('hud'), $score = $('score'), $best = $('best'), $runShards = $('runShards'), $combo = $('combo'), $overlay = $('overlay'), $mute = $('mute');
+const $hud = $('hud'), $score = $('score'), $best = $('best'), $runShards = $('runShards'), $combo = $('combo'), $overlay = $('overlay'), $mute = $('mute'), $vibe = $('vibe');
 let W, H;
 // reflowWorld 가 참조하는 게임 상태는 아래쪽에서 let 으로 선언되므로,
 // 최초 resize() 호출 시점에는 아직 TDZ 다. reset() 이 끝난 뒤에만 켠다.
@@ -187,7 +191,17 @@ if (!Array.isArray(ownedSkins)) ownedSkins = ['basic'];
 let skinId = store.get('swingStarSkin', 'basic');
 if (!ownedSkins.includes(skinId) || !SKINS.some(s => s.id === skinId)) skinId = 'basic';
 let muted = store.get('swingStarMuted', false) === true;
+let vibeOn = store.get('swingStarVibe', true) !== false;
 const skin = () => SKINS.find(s => s.id === skinId) || SKINS[0];
+
+// 데스크톱 크롬에도 navigator.vibrate 는 존재하지만 아무 일도 하지 않는다.
+// 그래서 토글 버튼은 '실제로 진동할 법한 기기'에서만 노출한다.
+// 단 이 판정은 버튼 노출에만 쓴다. 진동 자체는 호출 시점에 판정해야 한다 —
+// 로드 시점에 터치 정보가 아직 없는 환경이 있고, 여기서 한 번 잘못 판정하면
+// 진짜 휴대폰에서도 진동이 영영 죽는다.
+const hasVibrate = () => 'vibrate' in navigator;
+const touchLike = () => hasVibrate() &&
+  (navigator.maxTouchPoints > 0 || matchMedia('(hover: none)').matches);
 
 // ---------- 사운드 · 진동 ----------
 let actx = null;
@@ -234,15 +248,31 @@ function sfx(name, n = 0) {
     case 'boom': noise(0.6, 0.5); tone(140, 0.4, { type: 'sawtooth', slide: -100, vol: 0.12 }); break;
   }
 }
+// 소리와 진동은 서로 독립이다. 조용한 곳에서 소리만 끄고 햅틱은 남기고 싶을 때가 있다.
 function buzz(pattern) {
-  if (!muted && state === 'play' && navigator.vibrate) navigator.vibrate(pattern);
+  if (vibeOn && state === 'play' && hasVibrate()) navigator.vibrate(pattern);
 }
 function setMuted(m) {
   muted = m;
   store.set('swingStarMuted', m);
   $mute.textContent = m ? '🔇' : '🔊';
+  $mute.setAttribute('aria-pressed', String(m));
 }
+function setVibe(v) {
+  vibeOn = v;
+  store.set('swingStarVibe', v);
+  $vibe.textContent = v ? '📳' : '📴';
+  $vibe.setAttribute('aria-pressed', String(!v));
+  if (!v && hasVibrate()) navigator.vibrate(0);   // 진행 중인 진동 중단
+}
+
+// 터치 정보가 로드 시점에 아직 없을 수 있으므로 버튼 노출은 나중에 다시 판정한다
+function syncVibeButton() { $vibe.hidden = !touchLike(); }
+syncVibeButton();
+matchMedia('(hover: none)').addEventListener('change', syncVibeButton);
+
 setMuted(muted);
+setVibe(vibeOn);
 
 // ---------- 게임 ----------
 const COLORS = ['#ff6b8b', '#ffb86b', '#ffe66b', '#6bffb8', '#6bd0ff', '#b86bff', '#ff6bf0'];
@@ -744,7 +774,7 @@ function showOverlay(kind) {
         <p class="legend">🧊 얼음: 느리게 돌아요 · 🌋 용암: 3초 안에 탈출 · 🕳️ 블랙홀: 궤적이 휘어요 · ✦ 조각: 스킨 해금</p>
         <div class="shop-wrap"></div>
         <div class="btn start">시작하기</div>
-        <p class="dim">화면 밖으로 날아가면 끝 · 높이 갈수록 빨라져요 · M 키로 소리 끄기</p>
+        <p class="dim">화면 밖으로 날아가면 끝 · 높이 갈수록 빨라져요 · 🔊 소리(M) · 📳 진동(V)은 따로 끌 수 있어요</p>
       </div>`;
     renderShop();
     $hud.hidden = true;
@@ -818,12 +848,16 @@ $overlay.addEventListener('click', e => {
 });
 cv.addEventListener('pointerdown', e => {
   e.preventDefault();
+  // 실제 터치가 들어왔다면 진동 기기임이 확실해지므로 버튼 노출을 다시 판정
+  if (e.pointerType === 'touch' && $vibe.hidden) syncVibeButton();
   if (state === 'play') launch();
   else if (canQuickRestart()) start();
 });
 $mute.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); initAudio(); setMuted(!muted); });
+$vibe.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); setVibe(!vibeOn); });
 addEventListener('keydown', e => {
   if (e.code === 'KeyM') { initAudio(); setMuted(!muted); return; }
+  if (e.code === 'KeyV' && touchLike()) { setVibe(!vibeOn); return; }
   if (e.code !== 'Space' && e.code !== 'Enter') return;
   e.preventDefault();
   if (e.repeat) return;
