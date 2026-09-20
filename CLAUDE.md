@@ -99,10 +99,9 @@
 5. 일시정지 없음 (탭 전환 시 `dt` 클램프로 버티는 수준)
 6. BGM 없음 (효과음만)
 7. `maxCombo`·플레이 기록이 저장되지 않음 — 최고 점수 하나만 남음
-8. 점수 → 조각 환산 없음. 조각은 오직 필드 획득으로만 모임 (스킨 200개는 꽤 긴 그라인드)
-9. 행성 타입 3종에서 멈춤, 비행 속도 `FLY_SPEED`는 고정(공전 속도만 상승) — 후반 난이도 곡선이 평탄
-10. 파비콘 · PWA 매니페스트 · 오프라인 캐시 없음 (예전에 `thumbnail.png`를 만든 흔적이 `.claude/settings.local.json`에 남아 있으나 파일은 없음)
-11. 미션 / 일일 챌린지 / 리더보드 없음
+8. 행성 타입 3종에서 멈춤, 비행 속도 `FLY_SPEED`는 고정(공전 속도만 상승) — 후반 난이도 곡선이 평탄
+9. 파비콘 · PWA 매니페스트 · 오프라인 캐시 없음 (예전에 `thumbnail.png`를 만든 흔적이 `.claude/settings.local.json`에 남아 있으나 파일은 없음)
+10. 미션 / 일일 챌린지 / 리더보드 없음
 
 ## 코드 구조 (`index.html` 내부)
 
@@ -144,6 +143,16 @@
 ### Scoring
 - `height` is the highest planet `idx` reached, and it drives difficulty.
 - `score` accumulates: planets advanced × combo multiplier.
+### 조각 경제
+- 조각은 두 경로로 들어온다: 필드 획득(`collectShard`)과 **판 종료 시 점수 환산**(`die()`).
+- 환산식은 `Math.floor(score / SCORE_PER_SHARD)`, `SCORE_PER_SHARD = 10`.
+  `score`가 콤보 배율을 이미 반영하므로 잘 친 판이 더 많이 받는다.
+- 이 보너스를 넣기 전에는 판당 평균 4개(60판 측정), 조각이 **0개로 끝나는 판도 있었고**
+  골드 스킨(✦200)까지 50판이 걸렸다. 지금은 판당 평균 12.2개, 0개로 끝나는 판 0건,
+  골드까지 약 16판이다.
+- 대기 화면 데모는 조각을 받지 않는다 (`die()`가 `state === 'menu'`에서 먼저 return).
+- `runShards` = `fieldShards` + `bonusShards`. 게임 오버 화면이 이 내역을 분리해 보여준다.
+
 - **PERFECT:** the flight line passes within 35% of the orbit radius from the planet center. It is judged in `capture()`.
   - Each PERFECT does `combo++`, and the multiplier is `min(1 + combo, 5)`.
   - A normal landing resets the combo.

@@ -39,6 +39,7 @@
   .btn.home{background:rgba(255,255,255,.12);color:#fff}
   .btn.share{background:rgba(107,255,184,.16);color:#6bffb8;border:1px solid rgba(107,255,184,.45);min-width:150px}
   .dim{opacity:.55 !important;font-size:13px}
+  .shards b{color:#ffe66b;font-size:19px}
 
   /* ---------- 대기 화면 ---------- */
   .blobs{position:absolute;inset:0;pointer-events:none}
@@ -279,9 +280,14 @@ const COLORS = ['#ff6b8b', '#ffb86b', '#ffe66b', '#6bffb8', '#6bd0ff', '#b86bff'
 const FLY_SPEED = 470;
 const HOLE_PULL = 6e6;
 const LAVA_TIME = 3;
+// 판 종료 시 점수 몇 점당 조각 1개를 줄지.
+// 필드 조각만으로는 평균 4개/판이라 골드 스킨(✦200)까지 50판이 걸렸고,
+// 아예 0개로 끝나는 판도 있었다. 점수는 콤보 배율을 이미 반영하므로
+// 잘 친 판이 더 많이 받는다.
+const SCORE_PER_SHARD = 10;
 
 let planets, holes, shards, player, particles, popups, camY, shake, time;
-let score, height, combo, maxCombo, runShards;
+let score, height, combo, maxCombo, runShards, fieldShards, bonusShards;
 let meteors = [];
 let state = 'menu';
 let diedAt = 0;
@@ -340,7 +346,7 @@ function addPlanet() {
 
 function reset() {
   planets = []; holes = []; shards = []; particles = []; popups = [];
-  score = 0; height = 0; combo = 0; maxCombo = 0; runShards = 0;
+  score = 0; height = 0; combo = 0; maxCombo = 0; runShards = 0; fieldShards = 0; bonusShards = 0;
   shake = 0; time = 0;
   for (let i = 0; i < 6; i++) addPlanet();
   const p = planets[0];
@@ -426,6 +432,7 @@ function collectShard(s) {
   burst(s.x, s.y, '#ffe66b', 12, 120);
   if (state !== 'play') return;
   runShards++;
+  fieldShards++;
   shardsTotal++;
   store.set('swingStarShards', shardsTotal);
   popups.push({ x: s.x, y: s.y - 14, text: '✦', life: 0.7 });
@@ -449,6 +456,14 @@ function die() {
   player.mode = 'gone';
   state = 'dead';
   diedAt = performance.now();
+  // 판이 끝날 때 점수를 조각으로 환산해 지급. 필드 조각이 하나도 없는 판도
+  // 최소한의 보상은 받게 되고, 잘 친 판일수록 더 받는다.
+  bonusShards = Math.floor(score / SCORE_PER_SHARD);
+  if (bonusShards > 0) {
+    runShards += bonusShards;
+    shardsTotal += bonusShards;
+    store.set('swingStarShards', shardsTotal);
+  }
   if (score > best) {
     best = score;
     store.set('swingStarBest', best);
@@ -771,7 +786,7 @@ function showOverlay(kind) {
         <div class="logo-en">SWING STAR</div>
         <p class="sub">행성을 휘감고 돌다가, 휙! 다음 행성 궤도에 올라타세요</p>
         <div class="steps">${steps}</div>
-        <p class="legend">🧊 얼음: 느리게 돌아요 · 🌋 용암: 3초 안에 탈출 · 🕳️ 블랙홀: 궤적이 휘어요 · ✦ 조각: 스킨 해금</p>
+        <p class="legend">🧊 얼음: 느리게 돌아요 · 🌋 용암: 3초 안에 탈출 · 🕳️ 블랙홀: 궤적이 휘어요 · ✦ 조각: 필드에서 줍고, 점수로도 받아요 → 스킨 해금</p>
         <div class="shop-wrap"></div>
         <div class="btn start">시작하기</div>
         <p class="dim">화면 밖으로 날아가면 끝 · 높이 갈수록 빨라져요 · 🔊 소리(M) · 📳 진동(V)은 따로 끌 수 있어요</p>
@@ -783,7 +798,8 @@ function showOverlay(kind) {
       <h1>게임 오버</h1>
       <p class="big">점수 ${score}</p>
       <p>최고 기록 ${best}${score === best && score > 0 ? ' 🎉 신기록!' : ''}</p>
-      <p>🪐 높이 ${height} · 🔥 최대 콤보 ${maxCombo} · ✦ +${runShards} (보유 ${shardsTotal})</p>
+      <p>🪐 높이 ${height} · 🔥 최대 콤보 ${maxCombo}</p>
+      <p class="shards">✦ <b>+${runShards}</b> <span class="dim">(주운 조각 ${fieldShards} + 점수 보너스 ${bonusShards})</span> · 보유 ${shardsTotal}</p>
       <div class="btns"><div class="btn">다시 하기</div><div class="btn share">📋 결과 복사</div><div class="btn home">🏠 메뉴 · 스킨</div></div>
       <p class="dim">Space · 클릭으로 바로 다시 시작</p>`;
   }
