@@ -1,0 +1,745 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>스윙스타</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#070b1a;color:#fff;
+    font-family:system-ui,"Malgun Gothic",sans-serif;user-select:none;-webkit-user-select:none;touch-action:none}
+  canvas{display:block}
+  #hud{position:fixed;top:14px;left:0;right:0;text-align:center;pointer-events:none}
+  #hud[hidden]{display:none}
+  #score{font-size:52px;font-weight:800;text-shadow:0 0 24px #5cf}
+  #hud .row{font-size:14px;opacity:.7;margin-top:-4px}
+  #combo{display:inline-block;margin-top:8px;padding:3px 12px;border-radius:999px;font-size:17px;font-weight:900;
+    background:linear-gradient(90deg,#ff6b8b,#ffb86b);text-shadow:0 1px 2px rgba(0,0,0,.4)}
+  #combo[hidden]{display:none}
+  #combo.pop{animation:pop .35s ease-out}
+  @keyframes pop{from{transform:scale(1.7)}to{transform:scale(1)}}
+  #mute{position:fixed;top:12px;right:12px;z-index:10;width:42px;height:42px;border-radius:50%;cursor:pointer;
+    border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.08);color:#fff;font-size:19px;padding:0}
+
+  #overlay{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    text-align:center;cursor:pointer;padding:20px;box-sizing:border-box;overflow:hidden}
+  #overlay[hidden]{display:none}
+  #overlay.over{background:rgba(5,8,20,.7)}
+  #overlay.menu{background:radial-gradient(ellipse at center,rgba(5,8,20,.3) 0%,rgba(5,8,20,.82) 80%);
+    justify-content:safe center;overflow-y:auto;touch-action:pan-y}
+  #overlay p{margin:6px 0;opacity:.85;line-height:1.5}
+  #overlay.over h1{font-size:60px;margin:0 0 10px;letter-spacing:2px;
+    background:linear-gradient(90deg,#6cf,#c8f);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .big{font-size:26px;font-weight:700;opacity:1 !important}
+  .btns{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+  .btn{margin-top:22px;padding:12px 36px;border-radius:999px;background:#6cf;color:#071022;font-weight:800;font-size:18px;transition:transform .15s}
+  .btn:hover{transform:scale(1.05)}
+  .btn.home{background:rgba(255,255,255,.12);color:#fff}
+  .dim{opacity:.55 !important;font-size:13px}
+
+  /* ---------- 대기 화면 ---------- */
+  .blobs{position:absolute;inset:0;pointer-events:none}
+  .blobs span{position:absolute;width:45vmax;height:45vmax;border-radius:50%;filter:blur(70px);opacity:.28;
+    animation:drift 14s ease-in-out infinite alternate}
+  .blobs span:nth-child(1){background:#ff6bf0;left:-12vmax;top:-12vmax}
+  .blobs span:nth-child(2){background:#6bd0ff;right:-14vmax;top:18vh;animation-duration:17s;animation-delay:-5s}
+  .blobs span:nth-child(3){background:#ffb86b;left:20vw;bottom:-22vmax;animation-duration:20s;animation-delay:-9s}
+  @keyframes drift{to{transform:translate(8vmax,6vmax) scale(1.15)}}
+
+  .content{position:relative;display:flex;flex-direction:column;align-items:center;max-width:720px}
+  .tag{font-size:13px;font-weight:700;letter-spacing:1px;padding:6px 14px;border-radius:999px;
+    background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);margin-bottom:10px}
+  .logo{margin:0;font-size:clamp(48px,11vw,86px);font-weight:900;line-height:1.1;display:flex;gap:.04em}
+  .logo span{display:inline-block;color:var(--c);text-shadow:0 0 20px var(--c),0 5px 0 rgba(0,0,0,.35);
+    animation:bob 1.8s ease-in-out infinite;animation-delay:calc(var(--i) * .15s)}
+  @keyframes bob{0%,100%{transform:translateY(0) rotate(-3deg)}50%{transform:translateY(-12px) rotate(3deg)}}
+  .logo-en{margin-top:2px;font-size:14px;font-weight:800;letter-spacing:.6em;padding-left:.6em;
+    background:linear-gradient(90deg,#ff6b8b,#ffe66b,#6bffb8,#6bd0ff,#b86bff,#ff6b8b);background-size:200% 100%;
+    -webkit-background-clip:text;background-clip:text;color:transparent;animation:shine 4s linear infinite}
+  @keyframes shine{to{background-position:200% 0}}
+  .sub{font-size:17px;margin-top:12px !important}
+
+  .steps{display:flex;justify-content:center;gap:10px;margin:16px 0 4px;flex-wrap:wrap}
+  .step{width:150px;padding:12px 10px 10px;border-radius:16px;box-sizing:border-box;
+    background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-top:3px solid var(--c)}
+  .step .ico{font-size:28px;animation:float 2.4s ease-in-out infinite;animation-delay:calc(var(--i) * .4s)}
+  .step b{display:block;color:var(--c);font-size:16px;margin:4px 0 2px}
+  .step small{display:block;font-size:12.5px;opacity:.8;line-height:1.4}
+  @keyframes float{50%{transform:translateY(-6px)}}
+  .arrow{align-self:center;font-size:26px;opacity:.4}
+  .legend{font-size:12.5px;opacity:.75 !important;margin-top:10px !important}
+  @media (max-width:560px){.arrow{display:none}.step{width:30%;min-width:96px}}
+
+  .shop-wrap{margin-top:14px;cursor:default}
+  .shop-title{font-size:13px;opacity:.8;margin-bottom:8px}
+  .shop-title b{color:#ffe66b}
+  .shop{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+  .skin{width:84px;padding:8px 4px;border-radius:12px;font-size:13px;cursor:pointer;transition:transform .15s;
+    background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14)}
+  .skin:hover{transform:translateY(-2px)}
+  .skin.on{border-color:#ffe66b;background:rgba(255,230,107,.14)}
+  .skin.locked{opacity:.6}
+  .skin.no{animation:shake .35s}
+  .skin .ship{width:0;height:0;margin:2px auto 6px;border-left:22px solid var(--c);
+    border-top:9px solid transparent;border-bottom:9px solid transparent;filter:drop-shadow(0 0 6px var(--c))}
+  .skin .ship.rainbow{animation:hue 2s linear infinite}
+  .skin small{display:block;opacity:.75;margin-top:2px;font-size:11.5px}
+  @keyframes shake{25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}
+  @keyframes hue{to{filter:hue-rotate(360deg) drop-shadow(0 0 6px var(--c))}}
+
+  .btn.start{background:linear-gradient(90deg,#ff6b8b,#ffb86b,#6bd0ff,#b86bff,#ff6b8b);background-size:200% 100%;
+    color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.4);font-size:20px;padding:14px 44px;margin-top:18px;
+    animation:shine 5s linear infinite,pulse 1.6s ease-in-out infinite}
+  @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(255,107,240,.55)}50%{box-shadow:0 0 0 14px rgba(255,107,240,0)}}
+
+  @media (prefers-reduced-motion:reduce){#overlay *{animation:none !important}}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">
+  <div id="score">0</div>
+  <div class="row"><span id="best">최고 0</span> · ✦ <span id="runShards">0</span></div>
+  <div><span id="combo" hidden></span></div>
+</div>
+<div id="overlay"></div>
+<button id="mute" title="소리 켜기/끄기 (M)">🔊</button>
+
+<script>
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const $ = id => document.getElementById(id);
+const $hud = $('hud'), $score = $('score'), $best = $('best'), $runShards = $('runShards'), $combo = $('combo'), $overlay = $('overlay'), $mute = $('mute');
+let W, H;
+
+function resize() {
+  const dpr = window.devicePixelRatio || 1;
+  W = innerWidth; H = innerHeight;
+  cv.width = W * dpr; cv.height = H * dpr;
+  cv.style.width = W + 'px'; cv.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+addEventListener('resize', resize);
+resize();
+
+// ---------- 저장 ----------
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+};
+
+const SKINS = [
+  { id: 'basic',   name: '기본',   cost: 0,   swatch: '#ffffff', ship: '#ffffff', glow: '#88ddff', trail: (i, a) => `rgba(140,220,255,${a})` },
+  { id: 'neon',    name: '네온',   cost: 20,  swatch: '#7dfff0', ship: '#b8fff6', glow: '#00ffd5', trail: (i, a) => `rgba(0,255,213,${a})` },
+  { id: 'sunset',  name: '선셋',   cost: 50,  swatch: '#ffb86b', ship: '#ffd6a0', glow: '#ff6b8b', trail: (i, a) => i % 2 ? `rgba(255,107,139,${a})` : `rgba(255,184,107,${a})` },
+  { id: 'rainbow', name: '무지개', cost: 100, swatch: '#ff6b8b', ship: '#ffffff', glow: null,      trail: (i, a) => `hsla(${(time * 200 + i * 16) % 360},100%,65%,${a})` },
+  { id: 'gold',    name: '골드',   cost: 200, swatch: '#ffe66b', ship: '#ffe66b', glow: '#ffb700', trail: (i, a) => `rgba(255,215,90,${a})`, sparkle: true }
+];
+
+let best = store.get('swingStarBest', 0);
+let shardsTotal = store.get('swingStarShards', 0);
+let ownedSkins = store.get('swingStarSkins', ['basic']);
+if (!Array.isArray(ownedSkins)) ownedSkins = ['basic'];
+let skinId = store.get('swingStarSkin', 'basic');
+if (!ownedSkins.includes(skinId) || !SKINS.some(s => s.id === skinId)) skinId = 'basic';
+let muted = store.get('swingStarMuted', false) === true;
+const skin = () => SKINS.find(s => s.id === skinId) || SKINS[0];
+
+// ---------- 사운드 · 진동 ----------
+let actx = null;
+function initAudio() {
+  if (actx) { if (actx.state === 'suspended') actx.resume(); return; }
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (AC) actx = new AC();
+}
+function tone(freq, dur, { type = 'sine', vol = 0.15, slide = 0, delay = 0 } = {}) {
+  const t0 = actx.currentTime + delay;
+  const o = actx.createOscillator(), g = actx.createGain();
+  o.type = type;
+  o.frequency.setValueAtTime(freq, t0);
+  if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, freq + slide), t0 + dur);
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(vol, t0 + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  o.connect(g).connect(actx.destination);
+  o.start(t0); o.stop(t0 + dur + 0.02);
+}
+function noise(dur, vol) {
+  const len = Math.floor(actx.sampleRate * dur);
+  const buf = actx.createBuffer(1, len, actx.sampleRate), d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 2;
+  const src = actx.createBufferSource(), f = actx.createBiquadFilter(), g = actx.createGain();
+  f.type = 'lowpass'; f.frequency.value = 900; g.gain.value = vol;
+  src.buffer = buf;
+  src.connect(f).connect(g).connect(actx.destination);
+  src.start();
+}
+// 대기 화면 데모에서는 소리가 나지 않도록 play 상태에서만 재생
+function sfx(name, n = 0) {
+  if (muted || !actx || state !== 'play') return;
+  switch (name) {
+    case 'launch': tone(320, 0.12, { type: 'triangle', slide: 380, vol: 0.12 }); break;
+    case 'land': tone(520, 0.12, { vol: 0.12 }); tone(780, 0.1, { vol: 0.06, delay: 0.04 }); break;
+    case 'perfect': {
+      const base = 523 * Math.pow(2, Math.min(n, 8) * 2 / 12);
+      [1, 1.26, 1.5].forEach((m, i) => tone(base * m, 0.16, { type: 'triangle', vol: 0.12, delay: i * 0.06 }));
+      break;
+    }
+    case 'shard': tone(1320, 0.08, { type: 'square', vol: 0.05 }); tone(1760, 0.1, { type: 'square', vol: 0.04, delay: 0.05 }); break;
+    case 'tick': tone(880, 0.05, { type: 'square', vol: 0.05 }); break;
+    case 'boom': noise(0.6, 0.5); tone(140, 0.4, { type: 'sawtooth', slide: -100, vol: 0.12 }); break;
+  }
+}
+function buzz(pattern) {
+  if (!muted && state === 'play' && navigator.vibrate) navigator.vibrate(pattern);
+}
+function setMuted(m) {
+  muted = m;
+  store.set('swingStarMuted', m);
+  $mute.textContent = m ? '🔇' : '🔊';
+}
+setMuted(muted);
+
+// ---------- 게임 ----------
+const COLORS = ['#ff6b8b', '#ffb86b', '#ffe66b', '#6bffb8', '#6bd0ff', '#b86bff', '#ff6bf0'];
+const FLY_SPEED = 470;
+const HOLE_PULL = 6e6;
+const LAVA_TIME = 3;
+
+let planets, holes, shards, player, particles, popups, camY, shake, time;
+let score, height, combo, maxCombo, runShards;
+let meteors = [];
+let state = 'menu';
+
+const stars = Array.from({ length: 160 }, () => ({
+  x: Math.random(), y: Math.random(), z: Math.random() * 0.8 + 0.2, s: Math.random() * 1.6 + 0.3
+}));
+
+function addPlanet() {
+  const prev = planets[planets.length - 1];
+  const idx = prev ? prev.idx + 1 : 0;
+  const r = Math.max(13, 34 - idx * 0.5 + Math.random() * 8);
+  const orbit = r + 24 + Math.random() * 12;
+  const margin = orbit + 16;
+  // 점수가 오를수록 좌우로 움직이는 행성이 등장
+  let amp = idx > 4 ? Math.random() * Math.min((idx - 4) * 8, 140) : 0;
+  if (W - 2 * (margin + amp) < 0) amp = Math.max(0, W / 2 - margin);
+  const lo = margin + amp, hi = Math.max(lo, W - margin - amp);
+  const x = prev ? lo + Math.random() * (hi - lo) : W / 2;
+  const y = prev ? prev.y - (200 + Math.random() * 70 + Math.min(idx * 2, 60)) : H * 0.7;
+
+  const roll = Math.random();
+  const type = idx >= 8 && roll < 0.15 ? 'lava' : idx >= 3 && roll >= 0.85 ? 'ice' : 'normal';
+  const color = type === 'lava' ? '#ff5a2a' : type === 'ice' ? '#bfefff' : COLORS[idx % COLORS.length];
+  const p = {
+    idx, type, baseX: x, x, y, r, orbit, amp, color,
+    spd: 0.6 + Math.random() * 0.9, ph: Math.random() * Math.PI * 2, ring: Math.random() < 0.35
+  };
+  planets.push(p);
+  if (!prev) return;
+
+  // 행성 궤도와 겹치는 위치인지 검사 (움직이는 폭까지 고려)
+  const clear = (px, py, pad) => [prev, p].every(q => Math.hypot(px - q.baseX, py - q.y) > q.orbit + q.amp + pad);
+
+  let hole = null;
+  if (idx >= 12 && Math.random() < 0.25) {
+    const side = Math.random() < 0.5 ? -1 : 1;
+    const hx = Math.min(W - 30, Math.max(30, (prev.baseX + x) / 2 + side * (90 + Math.random() * 70)));
+    const hy = (prev.y + y) / 2;
+    if (clear(hx, hy, 40)) {
+      hole = { x: hx, y: hy, r: 14, range: 260, ph: Math.random() * Math.PI * 2 };
+      holes.push(hole);
+    }
+  }
+
+  const addShard = (sx, sy) => { if (clear(sx, sy, 12)) shards.push({ x: sx, y: sy, ph: Math.random() * Math.PI * 2, taken: false }); };
+  if (Math.random() < 0.6) {
+    const n = 1 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < n; i++) {
+      const t = 0.35 + 0.3 * (i + 0.5) / n;
+      addShard(prev.baseX + (x - prev.baseX) * t + (Math.random() - 0.5) * 80, prev.y + (y - prev.y) * t + (Math.random() - 0.5) * 40);
+    }
+  }
+  if (hole) addShard(hole.x + (Math.random() < 0.5 ? -1 : 1) * 45, hole.y + (Math.random() - 0.5) * 30);
+}
+
+function reset() {
+  planets = []; holes = []; shards = []; particles = []; popups = [];
+  score = 0; height = 0; combo = 0; maxCombo = 0; runShards = 0;
+  shake = 0; time = 0;
+  for (let i = 0; i < 6; i++) addPlanet();
+  const p = planets[0];
+  player = { mode: 'orbit', planet: p, from: null, ang: Math.PI / 2, dir: 1, x: p.x, y: p.y + p.orbit, vx: 0, vy: 0, lavaT: 0, trail: [] };
+  camY = p.y - H * 0.7;
+  updateHud();
+}
+
+const comboMult = () => Math.min(1 + combo, 5);
+
+function updateHud(pop) {
+  $score.textContent = score;
+  $best.textContent = '최고 ' + best;
+  $runShards.textContent = runShards;
+  $combo.hidden = combo < 1;
+  if (combo >= 1) {
+    $combo.textContent = `🔥 PERFECT ×${comboMult()}`;
+    if (pop) { $combo.classList.remove('pop'); void $combo.offsetWidth; $combo.classList.add('pop'); }
+  }
+}
+
+function angularSpeed() {
+  return Math.min(2.2 + height * 0.07, 4.6);
+}
+
+function launch() {
+  if (player.mode !== 'orbit') return;
+  const a = player.ang, d = player.dir;
+  player.vx = -Math.sin(a) * d * FLY_SPEED;
+  player.vy = Math.cos(a) * d * FLY_SPEED;
+  player.from = player.planet;
+  player.planet = null;
+  player.mode = 'fly';
+  burst(player.x, player.y, '#9df', 8, 80);
+  sfx('launch');
+}
+
+// 대기 화면 데모: 다음 행성이 날아갈 방향에 들어오면 자동으로 발사
+function demoPilot() {
+  const p = planets.find(q => q.idx === player.planet.idx + 1);
+  if (!p) return;
+  const ux = -Math.sin(player.ang) * player.dir, uy = Math.cos(player.ang) * player.dir;
+  const eta = Math.hypot(p.x - player.x, p.y - player.y) / FLY_SPEED;
+  const dx = p.baseX + p.amp * Math.sin((time + eta) * p.spd + p.ph) - player.x, dy = p.y - player.y;
+  if (dx * ux + dy * uy > 0 && Math.abs(dx * uy - dy * ux) < p.orbit * 0.35) launch();
+}
+
+function capture(p) {
+  const dx = player.x - p.x, dy = player.y - p.y;
+  const cross = dx * player.vy - dy * player.vx;
+  // 비행 직선이 행성 중심을 얼마나 비껴갔는지 = 퍼펙트 판정
+  const offset = Math.abs(cross) / FLY_SPEED;
+  player.ang = Math.atan2(dy, dx);
+  player.dir = cross > 0 ? 1 : -1;
+  player.planet = p;
+  player.mode = 'orbit';
+  player.lavaT = p.type === 'lava' ? LAVA_TIME : 0;
+  burst(player.x, player.y, p.color, 18, 160);
+
+  if (p.idx <= height) { sfx('land'); return; }
+  const gained = p.idx - height;
+  height = p.idx;
+  const perfect = offset / p.orbit < 0.35;
+  if (perfect) { combo++; maxCombo = Math.max(maxCombo, combo); } else combo = 0;
+  const pts = gained * (perfect ? comboMult() : 1);
+  score += pts;
+  if (perfect) {
+    popups.push({ x: p.x, y: p.y - p.orbit - 10, text: `PERFECT! +${pts}`, life: 1.2, rainbow: true });
+    burst(player.x, player.y, '#fff', 24, 240);
+    sfx('perfect', combo);
+    buzz([20, 30, 20]);
+  } else {
+    popups.push({ x: p.x, y: p.y - p.orbit - 10, text: gained > 1 ? `+${pts} 점프!` : `+${pts}`, life: 1 });
+    sfx('land');
+    buzz(15);
+  }
+  updateHud(perfect);
+}
+
+function collectShard(s) {
+  s.taken = true;
+  burst(s.x, s.y, '#ffe66b', 12, 120);
+  if (state !== 'play') return;
+  runShards++;
+  shardsTotal++;
+  store.set('swingStarShards', shardsTotal);
+  popups.push({ x: s.x, y: s.y - 14, text: '✦', life: 0.7 });
+  sfx('shard');
+  buzz(8);
+  updateHud();
+}
+
+function die() {
+  if (player.mode === 'gone') return;
+  shake = 14;
+  burst(player.x, player.y, '#ff8', 40, 260);
+  burst(player.x, player.y, '#f64', 30, 180);
+  if (state === 'menu') {
+    player.mode = 'gone';
+    setTimeout(() => { if (state === 'menu') reset(); }, 1200);
+    return;
+  }
+  sfx('boom');
+  buzz(200);
+  player.mode = 'gone';
+  state = 'dead';
+  if (score > best) {
+    best = score;
+    store.set('swingStarBest', best);
+    updateHud();
+  }
+  setTimeout(() => { if (state === 'dead') showOverlay('over'); }, 900);
+}
+
+function burst(x, y, color, n, power) {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2, s = Math.random() * power;
+    particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 1, decay: 1 + Math.random() * 1.5, color, size: 1 + Math.random() * 2.5 });
+  }
+}
+
+function update(dt) {
+  time += dt;
+  for (const p of planets) p.x = p.baseX + p.amp * Math.sin(time * p.spd + p.ph);
+
+  if (state === 'play' || state === 'menu') {
+    if (player.mode === 'orbit') {
+      const p = player.planet;
+      player.ang += player.dir * angularSpeed() * (p.type === 'ice' ? 0.55 : 1) * dt;
+      player.x = p.x + Math.cos(player.ang) * p.orbit;
+      player.y = p.y + Math.sin(player.ang) * p.orbit;
+      if (p.type === 'lava') {
+        const sec = Math.ceil(player.lavaT);
+        player.lavaT -= dt;
+        if (player.lavaT <= 0) die();
+        else if (Math.ceil(player.lavaT) < sec) sfx('tick');
+      }
+      if (state === 'menu' && player.mode === 'orbit') demoPilot();
+    } else if (player.mode === 'fly') {
+      // 블랙홀 중력: 방향만 휘고 속도는 일정하게 유지
+      for (const h of holes) {
+        const hx = h.x - player.x, hy = h.y - player.y, d = Math.hypot(hx, hy);
+        if (d < h.r) { die(); break; }
+        if (d < h.range) {
+          const a = HOLE_PULL / Math.max(d, 40) ** 2;
+          player.vx += hx / d * a * dt;
+          player.vy += hy / d * a * dt;
+        }
+      }
+      if (player.mode === 'fly') {
+        const sp = Math.hypot(player.vx, player.vy);
+        player.vx *= FLY_SPEED / sp;
+        player.vy *= FLY_SPEED / sp;
+        player.x += player.vx * dt;
+        player.y += player.vy * dt;
+        for (const s of shards) {
+          if (!s.taken && Math.hypot(player.x - s.x, player.y - s.y) < 18) collectShard(s);
+        }
+        for (const p of planets) {
+          if (p === player.from) continue;
+          if (Math.hypot(player.x - p.x, player.y - p.y) < p.orbit) { capture(p); break; }
+        }
+        const sy = player.y - camY;
+        if (player.mode === 'fly' && (player.x < -30 || player.x > W + 30 || sy < -220 || sy > H + 40)) die();
+      }
+    }
+    if (player.mode !== 'gone') {
+      player.trail.push({ x: player.x, y: player.y });
+      if (player.trail.length > 22) player.trail.shift();
+      if (skin().sparkle && Math.random() < dt * 25) {
+        particles.push({ x: player.x, y: player.y, vx: (Math.random() - 0.5) * 40, vy: (Math.random() - 0.5) * 40, life: 1, decay: 2, color: '#ffe66b', size: 1.2 });
+      }
+    }
+
+    if (player.planet) {
+      const target = player.planet.y - H * 0.68;
+      camY += (target - camY) * Math.min(1, dt * 3);
+    }
+  }
+
+  while (planets[planets.length - 1].y > camY - H) addPlanet();
+  const below = camY + H + 300;
+  planets = planets.filter(p => p.y < below || p === player.planet || p === player.from);
+  holes = holes.filter(h => h.y < below);
+  shards = shards.filter(s => !s.taken && s.y < below);
+
+  // 대기 화면 별똥별
+  if (state === 'menu' && Math.random() < dt * 0.9) {
+    const s = 350 + Math.random() * 300;
+    meteors.push({ x: W * (0.3 + Math.random() * 0.9), y: -20, vx: -s, vy: s * 0.6, life: 1, color: COLORS[Math.floor(Math.random() * COLORS.length)] });
+  }
+  for (const m of meteors) { m.x += m.vx * dt; m.y += m.vy * dt; m.life -= dt * 0.8; }
+  meteors = meteors.filter(m => m.life > 0);
+
+  for (const q of particles) {
+    q.x += q.vx * dt; q.y += q.vy * dt;
+    q.vx *= 0.96; q.vy *= 0.96;
+    q.life -= q.decay * dt;
+  }
+  particles = particles.filter(q => q.life > 0);
+  for (const t of popups) { t.y -= 40 * dt; t.life -= dt; }
+  popups = popups.filter(t => t.life > 0);
+  shake *= 0.88;
+}
+
+function draw() {
+  const TAU = Math.PI * 2;
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, '#0b1030');
+  g.addColorStop(1, '#05070f');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+
+  // 별 배경 (패럴랙스)
+  for (const s of stars) {
+    const y = ((s.y * H - camY * s.z * 0.25) % H + H) % H;
+    ctx.globalAlpha = 0.3 + s.z * 0.6 + Math.sin(time * 2 + s.x * 50) * 0.1;
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(s.x * W, y, s.s, s.s);
+  }
+  ctx.globalAlpha = 1;
+
+  for (const m of meteors) {
+    const mg = ctx.createLinearGradient(m.x, m.y, m.x - m.vx * 0.12, m.y - m.vy * 0.12);
+    mg.addColorStop(0, m.color);
+    mg.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.globalAlpha = Math.max(0, m.life);
+    ctx.strokeStyle = mg; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(m.x, m.y); ctx.lineTo(m.x - m.vx * 0.12, m.y - m.vy * 0.12); ctx.stroke();
+  }
+  ctx.globalAlpha = 1; ctx.lineCap = 'butt';
+
+  ctx.save();
+  ctx.translate((Math.random() - 0.5) * shake, -camY + (Math.random() - 0.5) * shake);
+
+  // 블랙홀
+  for (const h of holes) {
+    ctx.setLineDash([2, 10]);
+    ctx.strokeStyle = 'rgba(184,107,255,.25)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(h.x, h.y, h.range * 0.6, 0, TAU); ctx.stroke();
+    ctx.setLineDash([]);
+    for (let k = 0; k < 3; k++) {
+      ctx.strokeStyle = k === 1 ? `rgba(255,107,240,${0.5 - k * 0.1})` : `rgba(184,107,255,${0.6 - k * 0.15})`;
+      ctx.lineWidth = 3 - k * 0.7;
+      ctx.beginPath();
+      ctx.ellipse(h.x, h.y, h.r * (2 + k * 0.8), h.r * (0.8 + k * 0.35), time * (1.2 - k * 0.3) + h.ph + k, 0, TAU);
+      ctx.stroke();
+    }
+    ctx.shadowColor = '#b86bff'; ctx.shadowBlur = 30;
+    ctx.fillStyle = '#000';
+    ctx.beginPath(); ctx.arc(h.x, h.y, h.r, 0, TAU); ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = 'rgba(255,200,255,.8)'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(h.x, h.y, h.r, 0, TAU); ctx.stroke();
+  }
+
+  for (const p of planets) {
+    const active = player && player.planet === p;
+    // 궤도선
+    ctx.setLineDash([4, 8]);
+    ctx.lineDashOffset = -time * 20;
+    ctx.strokeStyle = active ? 'rgba(160,220,255,.7)' : 'rgba(255,255,255,.18)';
+    ctx.lineWidth = active ? 2 : 1.2;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.orbit, 0, TAU); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // 행성 본체
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur = p.type === 'lava' ? 28 + Math.sin(time * 6) * 14 : 25;
+    const pg = ctx.createRadialGradient(p.x - p.r * 0.4, p.y - p.r * 0.4, p.r * 0.1, p.x, p.y, p.r);
+    if (p.type === 'lava') {
+      pg.addColorStop(0, '#fff4c2'); pg.addColorStop(0.3, p.color); pg.addColorStop(1, '#3a0800');
+    } else if (p.type === 'ice') {
+      pg.addColorStop(0, '#fff'); pg.addColorStop(0.35, p.color); pg.addColorStop(1, '#2a4a70');
+    } else {
+      pg.addColorStop(0, '#fff'); pg.addColorStop(0.25, p.color); pg.addColorStop(1, '#1a1030');
+    }
+    ctx.fillStyle = pg;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, TAU); ctx.fill();
+    ctx.shadowBlur = 0;
+
+    if (p.type === 'ice') {
+      ctx.strokeStyle = 'rgba(220,250,255,.8)'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, TAU); ctx.stroke();
+      ctx.fillStyle = '#fff';
+      for (let k = 0; k < 4; k++) {
+        const a = time * 0.8 + k * 1.57 + p.ph, rr = p.r * (0.9 + 0.25 * Math.sin(time * 3 + k));
+        ctx.fillRect(p.x + Math.cos(a) * rr - 1, p.y + Math.sin(a) * rr - 1, 2, 2);
+      }
+    }
+
+    if (p.ring) {
+      ctx.strokeStyle = p.color; ctx.globalAlpha = 0.6; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.ellipse(p.x, p.y, p.r * 1.6, p.r * 0.45, -0.4, 0, TAU); ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+
+    // 용암 행성 남은 시간
+    if (active && p.type === 'lava' && player.lavaT > 0 && player.mode === 'orbit') {
+      const f = player.lavaT / LAVA_TIME;
+      ctx.strokeStyle = f < 0.35 ? '#ff3b3b' : '#ffb86b'; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.orbit + 8, -Math.PI / 2, -Math.PI / 2 + f * TAU); ctx.stroke();
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 16px system-ui, sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText(Math.ceil(player.lavaT), p.x, p.y + 6);
+    }
+  }
+
+  // 별 조각
+  for (const s of shards) {
+    ctx.save();
+    ctx.translate(s.x, s.y + Math.sin(time * 3 + s.ph) * 3);
+    ctx.rotate(time * 1.5 + s.ph);
+    ctx.shadowColor = '#ffe66b'; ctx.shadowBlur = 14;
+    ctx.fillStyle = '#ffe66b';
+    ctx.beginPath();
+    for (let k = 0; k < 8; k++) {
+      const rr = k % 2 ? 2.6 : 8, a = k * Math.PI / 4;
+      ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+    }
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+
+  if (player && player.mode !== 'gone') {
+    const sk = skin();
+    // 궤적
+    for (let i = 1; i < player.trail.length; i++) {
+      const a = player.trail[i - 1], b = player.trail[i];
+      ctx.strokeStyle = sk.trail(i, i / player.trail.length * 0.8);
+      ctx.lineWidth = i / player.trail.length * 4;
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    }
+    // 우주선
+    const heading = player.mode === 'orbit' ? player.ang + player.dir * Math.PI / 2 : Math.atan2(player.vy, player.vx);
+    ctx.save();
+    ctx.translate(player.x, player.y);
+    ctx.rotate(heading);
+    ctx.shadowColor = sk.glow || `hsl(${(time * 200) % 360},100%,65%)`;
+    ctx.shadowBlur = 18;
+    ctx.fillStyle = sk.ship;
+    ctx.beginPath(); ctx.moveTo(10, 0); ctx.lineTo(-7, 6); ctx.lineTo(-4, 0); ctx.lineTo(-7, -6); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+
+  for (const q of particles) {
+    ctx.globalAlpha = Math.max(0, q.life);
+    ctx.fillStyle = q.color;
+    ctx.beginPath(); ctx.arc(q.x, q.y, q.size, 0, TAU); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  ctx.textAlign = 'center';
+  for (const t of popups) {
+    ctx.globalAlpha = Math.max(0, Math.min(1, t.life));
+    ctx.font = `bold ${t.rainbow ? 24 : 20}px system-ui, "Malgun Gothic", sans-serif`;
+    ctx.fillStyle = t.rainbow ? `hsl(${(time * 300) % 360},100%,70%)` : '#fff';
+    ctx.fillText(t.text, t.x, t.y);
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
+// ---------- 화면 ----------
+function renderShop() {
+  const el = $overlay.querySelector('.shop-wrap');
+  if (!el) return;
+  const chips = SKINS.map(s => {
+    const owned = ownedSkins.includes(s.id);
+    const label = s.id === skinId ? '선택됨' : owned ? '보유' : `🔒 ✦${s.cost}`;
+    return `<div class="skin${s.id === skinId ? ' on' : ''}${owned ? '' : ' locked'}" data-id="${s.id}" style="--c:${s.swatch}">
+      <div class="ship${s.id === 'rainbow' ? ' rainbow' : ''}"></div>${s.name}<small>${label}</small></div>`;
+  }).join('');
+  el.innerHTML = `<div class="shop-title">🏆 최고 <b>${best}</b> · ✦ 보유 <b>${shardsTotal}</b> · 우주선을 골라보세요</div><div class="shop">${chips}</div>`;
+}
+
+function pickSkin(id, el) {
+  const s = SKINS.find(k => k.id === id);
+  if (!s) return;
+  if (!ownedSkins.includes(id)) {
+    if (shardsTotal < s.cost) {
+      el.classList.remove('no'); void el.offsetWidth; el.classList.add('no');
+      return;
+    }
+    shardsTotal -= s.cost;
+    ownedSkins.push(id);
+    store.set('swingStarShards', shardsTotal);
+    store.set('swingStarSkins', ownedSkins);
+  }
+  skinId = id;
+  store.set('swingStarSkin', id);
+  renderShop();
+}
+
+function showOverlay(kind) {
+  $overlay.className = kind;
+  if (kind === 'menu') {
+    const logo = [['스', '#ff6b8b'], ['윙', '#ffe66b'], ['스', '#6bffb8'], ['타', '#6bd0ff']]
+      .map(([ch, c], i) => `<span style="--c:${c};--i:${i}">${ch}</span>`).join('');
+    const steps = [
+      ['🌍', '빙글빙글', '우주선이 행성<br>궤도를 돌아요', '#6bd0ff'],
+      ['👆', '슝!', '클릭 · 터치 ·<br>스페이스로 발사', '#ffb86b'],
+      ['🎯', 'PERFECT', '행성 정중앙으로 착지하면<br>점수 배율 UP', '#b86bff']
+    ].map(([ico, title, desc, c], i) =>
+      `<div class="step" style="--c:${c};--i:${i}"><div class="ico">${ico}</div><b>${title}</b><small>${desc}</small></div>`
+    ).join('<div class="arrow">›</div>');
+    $overlay.innerHTML = `
+      <div class="blobs"><span></span><span></span><span></span></div>
+      <div class="content">
+        <div class="tag">🚀 원버튼 우주 아케이드</div>
+        <h1 class="logo">${logo}</h1>
+        <div class="logo-en">SWING STAR</div>
+        <p class="sub">행성을 휘감고 돌다가, 휙! 다음 행성 궤도에 올라타세요</p>
+        <div class="steps">${steps}</div>
+        <p class="legend">🧊 얼음: 느리게 돌아요 · 🌋 용암: 3초 안에 탈출 · 🕳️ 블랙홀: 궤적이 휘어요 · ✦ 조각: 스킨 해금</p>
+        <div class="shop-wrap"></div>
+        <div class="btn start">시작하기</div>
+        <p class="dim">화면 밖으로 날아가면 끝 · 높이 갈수록 빨라져요 · M 키로 소리 끄기</p>
+      </div>`;
+    renderShop();
+    $hud.hidden = true;
+  } else {
+    $overlay.innerHTML = `
+      <h1>게임 오버</h1>
+      <p class="big">점수 ${score}</p>
+      <p>최고 기록 ${best}${score === best && score > 0 ? ' 🎉 신기록!' : ''}</p>
+      <p>🪐 높이 ${height} · 🔥 최대 콤보 ${maxCombo} · ✦ +${runShards} (보유 ${shardsTotal})</p>
+      <div class="btns"><div class="btn">다시 하기</div><div class="btn home">🏠 메뉴 · 스킨</div></div>`;
+  }
+  $overlay.hidden = false;
+}
+
+function start() {
+  initAudio();
+  reset();
+  meteors = [];
+  state = 'play';
+  $overlay.hidden = true;
+  $hud.hidden = false;
+}
+
+function goMenu() {
+  state = 'menu';
+  reset();
+  showOverlay('menu');
+}
+
+$overlay.addEventListener('click', e => {
+  const chip = e.target.closest('.skin');
+  if (chip) { pickSkin(chip.dataset.id, chip); return; }
+  if (e.target.closest('.shop-wrap')) return;
+  if (e.target.closest('.home')) { goMenu(); return; }
+  if (state !== 'play') start();
+});
+cv.addEventListener('pointerdown', e => { e.preventDefault(); if (state === 'play') launch(); });
+$mute.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); initAudio(); setMuted(!muted); });
+addEventListener('keydown', e => {
+  if (e.code === 'KeyM') { initAudio(); setMuted(!muted); return; }
+  if (e.code !== 'Space' && e.code !== 'Enter') return;
+  e.preventDefault();
+  if (e.repeat) return;
+  if (state === 'play') launch();
+  else if (!$overlay.hidden) start();
+});
+
+reset();
+showOverlay('menu');
+
+let last = performance.now();
+function loop(now) {
+  const dt = Math.min(0.033, (now - last) / 1000);
+  last = now;
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

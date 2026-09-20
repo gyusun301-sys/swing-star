@@ -1,0 +1,11 @@
+# Claude Code 로컬 설정 (머신별 경로 포함)
+.claude/settings.local.json
+
+# 에이전트 런타임 산출물
+.omc/
+.playwright-mcp/
+
+# OS
+Thumbs.db
+desktop.ini
+.DS_Store
