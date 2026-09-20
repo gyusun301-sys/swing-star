@@ -110,13 +110,58 @@ const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
 const $hud = $('hud'), $score = $('score'), $best = $('best'), $runShards = $('runShards'), $combo = $('combo'), $overlay = $('overlay'), $mute = $('mute');
 let W, H;
+// reflowWorld 가 참조하는 게임 상태는 아래쪽에서 let 으로 선언되므로,
+// 최초 resize() 호출 시점에는 아직 TDZ 다. reset() 이 끝난 뒤에만 켠다.
+let worldReady = false;
 
 function resize() {
+  const prevW = W, prevH = H;
   const dpr = window.devicePixelRatio || 1;
   W = innerWidth; H = innerHeight;
   cv.width = W * dpr; cv.height = H * dpr;
   cv.style.width = W + 'px'; cv.style.height = H + 'px';
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  reflowWorld(prevW, prevH);
+}
+
+// 화면 폭이 바뀌면 이미 생성된 오브젝트를 새 폭에 맞게 다시 배치한다.
+// 이게 없으면 모바일에서 화면을 회전하는 순간 행성들이 화면 밖으로 밀려나
+// 갈 곳이 사라져 즉사한다.
+function reflowWorld(prevW, prevH) {
+  if (!worldReady || !prevW || !prevH || (prevW === W && prevH === H)) return;
+  const scale = W / prevW;
+
+  // 세로 길이가 바뀌면 카메라를 즉시 다시 잡아야 한다. camY 는 H 를 기준으로
+  // 목표를 정하는데, update() 의 이징으로는 따라잡기 전에 플레이어가 새 화면
+  // 아래쪽 경계를 벗어나 die() 가 먼저 호출된다.
+  if (prevH !== H && player) {
+    if (player.mode === 'orbit' && player.planet) {
+      camY = player.planet.y - H * 0.68;
+    } else {
+      // 비행 중이면 화면상 위치를 같은 비율로 유지
+      const frac = Math.min(0.9, Math.max(0.1, (player.y - camY) / prevH));
+      camY = player.y - H * frac;
+    }
+  }
+
+  for (const p of planets) {
+    // amp 는 원본(amp0)에서 매번 다시 계산해야 좁은 화면을 거쳐도 원래 폭으로 복구된다
+    const margin = p.orbit + 16;
+    p.amp = Math.min(p.amp0, Math.max(0, W / 2 - margin));
+    const lo = margin + p.amp, hi = Math.max(lo, W - margin - p.amp);
+    p.baseX = Math.min(hi, Math.max(lo, p.baseX * scale));
+    p.x = p.baseX + p.amp * Math.sin(time * p.spd + p.ph);
+  }
+  for (const h of holes) h.x = Math.min(W - 30, Math.max(30, h.x * scale));
+  for (const s of shards) s.x = Math.min(W - 12, Math.max(12, s.x * scale));
+
+  if (player) {
+    if (player.mode === 'fly') {
+      // 비행 중이면 진행 위치만 비례 이동시키고 화면 안으로 되돌린다
+      player.x = Math.min(W - 12, Math.max(12, player.x * scale));
+    }
+    player.trail.length = 0;
+  }
 }
 addEventListener('resize', resize);
 resize();
@@ -232,7 +277,7 @@ function addPlanet() {
   const type = idx >= 8 && roll < 0.15 ? 'lava' : idx >= 3 && roll >= 0.85 ? 'ice' : 'normal';
   const color = type === 'lava' ? '#ff5a2a' : type === 'ice' ? '#bfefff' : COLORS[idx % COLORS.length];
   const p = {
-    idx, type, baseX: x, x, y, r, orbit, amp, color,
+    idx, type, baseX: x, x, y, r, orbit, amp, amp0: amp, color,
     spd: 0.6 + Math.random() * 0.9, ph: Math.random() * Math.PI * 2, ring: Math.random() < 0.35
   };
   planets.push(p);
@@ -271,6 +316,7 @@ function reset() {
   const p = planets[0];
   player = { mode: 'orbit', planet: p, from: null, ang: Math.PI / 2, dir: 1, x: p.x, y: p.y + p.orbit, vx: 0, vy: 0, lavaT: 0, trail: [] };
   camY = p.y - H * 0.7;
+  worldReady = true;
   updateHud();
 }
 
